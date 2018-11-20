@@ -52,8 +52,7 @@ def computeSecretKey(g, p):
 
 def computePublicKey(g, p, s):
     """Computes a node's public key"""
-    """Complete this function"""
-    pass
+    return expMod(g,s,p)
 
 def sendPublicKey(g, p, s):
     """Sends node's public key"""
@@ -211,6 +210,13 @@ def processMsgs(s, msg, state):
             s.close()
             print("Game Over!")
             exit();
+        return 1
+
+    if (msg.startswith('111')):
+        secretkey = computeSecretKey(gen, prime)
+        pubkey = sendPublicKey(gen, prime, secretkey)
+        print("Secret Key is " + str(secretkey) + " " + pubkey)
+        """s.send(m.encode())"""
         return 1
     
     if (msg.startswith('205')):

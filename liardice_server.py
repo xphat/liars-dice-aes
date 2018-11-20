@@ -31,12 +31,12 @@ def expMod(b,n,m):
 def computePublicKey(g, p, s):
 	"""Computes a node's public key."""
 	"""You will need to implement this function"""
-	pass
+	return expMod(g,s,p)
 
 def computeSecretKey(g, p):
-	"""Computes this node's secret key."""
-	"""You will need to implement this function."""
-	pass
+    """Computes this node's secret key."""
+    secretKey = random.randint(int(g), int(p))
+    return secretKey
 
 
 def generateNonce():
@@ -173,6 +173,13 @@ def processMsgs(s, msg):
 
     if (msg.startswith('110')):
         s.send("111 Generator and Prime Rcvd".encode())
+        keyarr = msg.split(' ')
+        p = int(keyarr[4])
+        t = keyarr[2].split(',')
+        g = int(t[0])
+        secretkey = computeSecretKey(g, p)
+        pubkey = sendPublicKey(g, p, secretkey)
+        print("Secret Key is " + str(secretkey) + " " + pubkey)
         return 1
 
     if (msg.startswith('500')):
