@@ -8,15 +8,88 @@
 from socket import *
 import sys
 import random
+import simplified_AES
+import time
+import math
+import hashlib
 
 roll = []
 clientRoll = []
 cfreq = 0
 cvalue = 0
 
+def expMod(b,n,m):
+    """Computes the modular exponent of a number"""
+    """returns (b^n mod m)"""
+    if n==0:
+        return 1
+    elif n%2==0:
+        return expMod((b*b)%m, n/2, m)
+    else:
+        return(b*expMod(b,n-1,m))%m
+
+def computePublicKey(g, p, s):
+	"""Computes a node's public key."""
+	"""You will need to implement this function"""
+	pass
+
+def computeSecretKey(g, p):
+	"""Computes this node's secret key."""
+	"""You will need to implement this function."""
+	pass
+
+
+def generateNonce():
+    """This method returns a 16-bit random integer derived from hashing the
+        current time. This is used to test for liveness"""
+    hash = hashlib.sha1()
+    hash.update(str(time.time()).encode('utf-8'))
+    return int.from_bytes(hash.digest()[:2], byteorder=sys.byteorder)
+
+# M   = message, an integer
+# Pub = receiver's public key, an integer
+# p   = prime number, an integer
+# gen = generator, an integer
+def DHencrypt(M, Pub, p, gen):
+	"""Encrypts a message M given parameters above"""
+	k = random.randint(1,p-1)
+	return expMod(gen,k,p), M*expMod(Pub,k,p)
+
+# C    = second part of ciphertext, an integer
+# s    = first part of ciphertext, an integer
+# priv = receiver's secret key, an integer
+# p    = prime number, an integer
+def DHdecrypt(C, s, priv, p):
+	"""Decrypts a message C given parameters above"""
+	return int(C/expMod(s,priv,p))
+
+def sendPublicKey(g, p, s):
+	"""Sends node's public key"""
+	status = "120 PubKey " + str(computePublicKey(g, p, s))
+	return status
+
+# M   = message, an integer
+# Pub = receiver's public key, an integer
+# p   = prime number, an integer
+# gen = generator, an integer
+def sendEncryptedMsg(M, Pub, p, gen):
+	"""Sends encrypted message """
+	y1, y2 = encryptMsg(M, Pub, p, gen)
+	status = "130 Ciphertext " + str(int(y1)) +" " + str(int(y2))
+	return status
+
+def nonceVerification(nonce, decryptedNonce):
+    """Verifies that the transmitted nonce matches that received
+       from the client."""
+    if (nonce == decryptedNonce):
+        status = "150 OK"
+    else:
+        status = "400 Error"
+    return status
+
 def clientHello():
     #"""Generates client hello message"""
-    status = "105 Hello"
+    status = "100 Hello"
     return status
 
 def RollDiceACK(dice):
@@ -96,6 +169,10 @@ def challenge(roll, clientRoll, msg):
 def processMsgs(s, msg):
     if (msg.startswith('100')):
         s.send(clientHello().encode())
+        return 1
+
+    if (msg.startswith('110')):
+        s.send("111 Generator and Prime Rcvd".encode())
         return 1
 
     if (msg.startswith('500')):

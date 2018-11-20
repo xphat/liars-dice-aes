@@ -8,13 +8,91 @@
 from socket import *
 import sys
 import random
+import simplified_AES
+import time
+import math
+import hashlib
 
+def expMod(b,n,m):
+    """Computes the modular exponent of a number returns (b^n mod m)"""
+    if n==0:
+        return 1
+    elif n%2==0:
+        return expMod((b*b)%m, n/2, m)
+    else:
+        return(b*expMod(b,n-1,m))%m
+
+def IsValidGenerator(g, p):
+    isprime = 0
+    for i in range(2,p//2+1):
+        if (p%i == 0):
+            isprime += 1
+
+    if (isprime == 0 and g < p):
+        return True
+    else:
+        return False
 
 
 def serverHello():
     """Generates server hello message"""
     status = "100 Hello"
     return status
+
+
+def sendGeneratorPrime(g,p):
+    """Sends server generator"""
+    status = "110 Generator: " + str(g) + ", Prime: " + str(p)
+    return status
+
+def computeSecretKey(g, p):
+    """Computes this node's secret key"""
+    secretKey = random.randint(int(g), int(p))
+    return secretKey
+
+def computePublicKey(g, p, s):
+    """Computes a node's public key"""
+    """Complete this function"""
+    pass
+
+def sendPublicKey(g, p, s):
+    """Sends node's public key"""
+    status = "120 PubKey " + str(computePublicKey(g, p, s))
+    return status
+
+def generateNonce():
+	"""This method returns a 16-bit random integer derived from hashing the
+		current time. This is used to test for liveness"""
+	hash = hashlib.sha1()
+	hash.update(str(time.time()).encode('utf-8'))
+	return int.from_bytes(hash.digest()[:2], byteorder=sys.byteorder)
+
+# M   = message, an integer
+# Pub = receiver's public key, an integer
+# p   = prime number, an integer
+# gen = generator, an integer
+def encryptMsg(M, Pub, p, gen):
+	"""Encrypts a message M given parameters above"""
+	k = random.randint(1,p-1)
+	return expMod(gen,k,p), M*expMod(Pub,k,p)
+
+# C    = second part of ciphertext, an integer
+# s    = first part of ciphertext, an integer
+# priv = sender's public key, an integer
+# p    = prime number, an integer
+def decryptMsg(C, s, priv, p):
+	"""Decrypts a message C given parameters above"""
+	return int(C/expMod(s,priv,p))
+
+# M   = message, an integer
+# Pub = receiver's public key, an integer
+# p   = prime number, an integer
+# gen = generator, an integer
+def sendEncryptedMsg(M, Pub, p, gen):
+	"""Sends encrypted message """
+	y1, y2 = encryptMsg(M, Pub, p, gen)
+	status = "130 Ciphertext " + str(int(y1)) +" " + str(int(y2))
+	return status
 
 def RollDice():
     """Generates message to get server to roll some or all dice."""
@@ -112,7 +190,20 @@ def challenge(roll, msg):
 
 # s       = socket
 # msg     = initial message being processed
-def processMsgs(s, msg):
+def processMsgs(s, msg, state):
+
+    gen = int(state['gen'])		# integer generator
+    prime = int(state['prime'])		# integer prime
+    sKey = int(state['SecretKey'])	# secret key
+    rcvrPK = int(state['RcvrPubKey'])	# receiver's public key
+    nonce = int(state['nonce'])         # Number used only once
+
+    
+    if (msg.startswith('100')):
+        m = sendGeneratorPrime(gen,prime)
+        s.send(m.encode())
+        return 1
+
     if (msg.startswith('105')):
         m = RollDice()
         s.send(m.encode())
@@ -211,6 +302,19 @@ def main():
     Follow the on-screen instructions.
     ''')
 
+    while (True):
+        prime = int(input('Enter a valid prime (p) between 1024 and 65536: '))
+        generator = int(input('Enter a positive integer (g) less than the prime just entered: '))
+        if (IsValidGenerator(generator, prime)): break
+    nonce = generateNonce()
+    # To ensure that the nonce can always be encrypted correctly.
+    while (nonce >= prime):
+        nonce = generateNonce()
+
+    secretKey = computeSecretKey(generator, prime)
+    rcvrPK = 60769
+    state = {'prime': prime, 'gen': generator, 'SecretKey': secretKey, 'RcvrPubKey': rcvrPK, 'nonce': nonce}
+
     s = socket(AF_INET,SOCK_STREAM)
     s.connect((serverHost,serverPort))
     s.send(serverHello().encode())
@@ -222,7 +326,7 @@ def main():
         if not msg:
             status = -1
         else:
-            status = processMsgs(s, msg)
+            status = processMsgs(s, msg, state)
     if status < 0:
         print("Invalid data received. Closing")
     s.close() 
