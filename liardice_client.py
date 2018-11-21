@@ -13,6 +13,12 @@ import time
 import math
 import hashlib
 
+global generator
+global prime
+global serverpubkey
+global mysecretkey
+global nonce
+
 def expMod(b,n,m):
     """Computes the modular exponent of a number returns (b^n mod m)"""
     if n==0:
@@ -27,8 +33,8 @@ def IsValidGenerator(g, p):
     for i in range(2,p//2+1):
         if (p%i == 0):
             isprime += 1
-
-    if (isprime == 0 and g < p):
+            
+    if (isprime == 0 and p > 256 and p < 1021 and g < p):
         return True
     else:
         return False
@@ -189,17 +195,16 @@ def challenge(roll, msg):
 
 # s       = socket
 # msg     = initial message being processed
-def processMsgs(s, msg, state):
+def processMsgs(s, msg):
+    global generator
+    global prime
+    global serverpubkey
+    global mysecretkey
+    global nonce
 
-    gen = int(state['gen'])		# integer generator
-    prime = int(state['prime'])		# integer prime
-    sKey = int(state['SecretKey'])	# secret key
-    rcvrPK = int(state['RcvrPubKey'])	# receiver's public key
-    nonce = int(state['nonce'])         # Number used only once
-
-    
+   
     if (msg.startswith('100')):
-        m = sendGeneratorPrime(gen,prime)
+        m = sendGeneratorPrime(generator,prime)
         s.send(m.encode())
         return 1
 
@@ -213,11 +218,41 @@ def processMsgs(s, msg, state):
         return 1
 
     if (msg.startswith('111')):
-        secretkey = computeSecretKey(gen, prime)
-        pubkey = sendPublicKey(gen, prime, secretkey)
-        print("Secret Key is " + str(secretkey) + " " + pubkey)
-        """s.send(m.encode())"""
+        mysecretkey = computeSecretKey(generator, prime)
+        pubkey = sendPublicKey(generator, prime, mysecretkey)
+        print("Secret Key is " + str(mysecretkey) + " Nonce is " + str(nonce))
+        s.send(pubkey.encode())
         return 1
+
+    if (msg.startswith('120')):
+        keyarr = msg.split(' ')
+        serverpubkey = int(keyarr[2])
+        encmsg = sendEncryptedMsg(nonce, serverpubkey, prime, generator)
+        s.send(encmsg.encode())
+        return 1
+
+    if (msg.startswith('130')):
+        encnonce = msg.split(' ')
+        decrypnonce = decryptMsg(int(encnonce[3]), int(encnonce[2]), mysecretkey, prime)
+        if (nonce-decrypnonce == 5):
+            print("150 OK")
+            print("Generator is : " + str(generator) + " Prime is: " + str(prime) + " My Private Key: " + str(mysecretkey) + " Server Public Key: " + str(serverpubkey))
+            m = RollDice()
+            s.send(m.encode())
+            if (m.startswith('500')):
+                s.close()
+                print("Game Over!")
+                exit();
+        else:
+            print("400 OK")
+            status = "500 Game Over"
+            s.send(status.encode())
+            s.close()
+            print("Encryption Failed!  Game Over!")
+            exit();
+        return 1
+
+    
     
     if (msg.startswith('205')):
         smsg = msg.split(' ');
@@ -293,6 +328,10 @@ def processMsgs(s, msg, state):
                 
 
 def main():
+    global nonce
+    global generator
+    global prime
+    
     """Driver function for the project"""
     args = sys.argv
     if len(args) != 3:
@@ -316,11 +355,7 @@ def main():
     # To ensure that the nonce can always be encrypted correctly.
     while (nonce >= prime):
         nonce = generateNonce()
-
-    secretKey = computeSecretKey(generator, prime)
-    rcvrPK = 60769
-    state = {'prime': prime, 'gen': generator, 'SecretKey': secretKey, 'RcvrPubKey': rcvrPK, 'nonce': nonce}
-
+    
     s = socket(AF_INET,SOCK_STREAM)
     s.connect((serverHost,serverPort))
     s.send(serverHello().encode())
@@ -332,7 +367,7 @@ def main():
         if not msg:
             status = -1
         else:
-            status = processMsgs(s, msg, state)
+            status = processMsgs(s, msg)
     if status < 0:
         print("Invalid data received. Closing")
     s.close() 

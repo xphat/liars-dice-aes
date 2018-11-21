@@ -17,6 +17,10 @@ roll = []
 clientRoll = []
 cfreq = 0
 cvalue = 0
+global generator
+global prime
+global clientpubkey
+global mysecretkey
 
 def expMod(b,n,m):
     """Computes the modular exponent of a number"""
@@ -74,7 +78,7 @@ def sendPublicKey(g, p, s):
 # gen = generator, an integer
 def sendEncryptedMsg(M, Pub, p, gen):
 	"""Sends encrypted message """
-	y1, y2 = encryptMsg(M, Pub, p, gen)
+	y1, y2 = DHencrypt(M, Pub, p, gen)
 	status = "130 Ciphertext " + str(int(y1)) +" " + str(int(y2))
 	return status
 
@@ -167,6 +171,11 @@ def challenge(roll, clientRoll, msg):
 
 
 def processMsgs(s, msg):
+    global generator
+    global prime
+    global clientpubkey
+    global mysecretkey
+
     if (msg.startswith('100')):
         s.send(clientHello().encode())
         return 1
@@ -174,13 +183,29 @@ def processMsgs(s, msg):
     if (msg.startswith('110')):
         s.send("111 Generator and Prime Rcvd".encode())
         keyarr = msg.split(' ')
-        p = int(keyarr[4])
+        prime = int(keyarr[4])
         t = keyarr[2].split(',')
-        g = int(t[0])
-        secretkey = computeSecretKey(g, p)
-        pubkey = sendPublicKey(g, p, secretkey)
-        print("Secret Key is " + str(secretkey) + " " + pubkey)
+        generator = int(t[0])
+        mysecretkey = computeSecretKey(generator,prime)
+        print("Secret Key is " + str(mysecretkey))
         return 1
+
+    if (msg.startswith('120')):
+        keyarr = msg.split(' ')
+        clientpubkey = int(keyarr[2])
+        pubkey = sendPublicKey(generator, prime, mysecretkey)
+        s.send(pubkey.encode())
+        return 1
+
+    if (msg.startswith('130')):
+        encnonce = msg.split(' ')
+        decrypnonce = DHdecrypt(int(encnonce[3]), int(encnonce[2]), mysecretkey, prime)
+        decrypnonce = decrypnonce - 5
+        encmsg = sendEncryptedMsg(decrypnonce, clientpubkey, prime, generator)
+        s.send(encmsg.encode())
+        print("Generator is : " + str(generator) + " Prime is: " + str(prime) + " My Private Key: " + str(mysecretkey) + " Client Public Key: " + str(clientpubkey))
+        return 1
+    
 
     if (msg.startswith('500')):
         s.close()
